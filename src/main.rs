@@ -2,7 +2,7 @@ use cascade::cascade;
 use std::path::PathBuf;
 
 
-use gtk::{CustomFilter, CustomSorter, FilterListModel, gio, Image, SearchBar, SortListModel, Widget};
+use gtk::{CustomFilter, CustomSorter, FilterListModel, gio, IconSize, Image, SearchBar, SortListModel, Widget};
 
 use gtk::{
     Application, ApplicationWindow, Label, ListView, PolicyType, ScrolledWindow,
@@ -19,6 +19,12 @@ use crate::entry::EntryObject;
 mod entry;
 
 
+// TODO : Css - https://github.com/gtk-rs/gtk4-rs/blob/master/book/listings/css/1/main.rs
+// TODO : Focus
+// TODO : Icon theme
+// TODO : Remove
+// TODO: Skim - https://github.com/oknozor/onagre/blob/b8afd919aefb7316856a90989dfccc19a2c2e1af/src/entries/external_entry.rs#L37
+
 
 fn main() {
     // Create a new application
@@ -33,9 +39,34 @@ fn main() {
 }
 
 fn get_desktop_entries() -> Vec<EntryObject> {
-    let apps = PathBuf::from("/usr/share/applications");
     let mut entries = vec![];
-    for entry in apps.read_dir().expect("Failed to open_dir") {
+
+    let path = PathBuf::from("/usr/share/applications");
+    destkop_entries_from_path(path, &mut entries);
+
+    if let Some(data_dir) = dirs::data_dir() {
+        destkop_entries_from_path(data_dir, &mut entries);
+    }
+
+    if let Some(data_dir) = dirs::data_local_dir() {
+        destkop_entries_from_path(data_dir, &mut entries);
+    }
+
+    if let Some(desktop) = dirs::desktop_dir() {
+        destkop_entries_from_path(desktop, &mut entries);
+    }
+
+    entries.dedup_by(|a, b| {
+        let a = a.property::<String>("name");
+        let b = b.property::<String>("name");
+        a == b
+    });
+
+    entries
+}
+
+fn destkop_entries_from_path(path: PathBuf, entries: &mut Vec<EntryObject>) {
+    for entry in path.read_dir().expect("Failed to open_dir") {
         let entry = entry.expect("Failed to read desktop entry");
 
         let is_desktop_entry = entry
@@ -51,8 +82,6 @@ fn get_desktop_entries() -> Vec<EntryObject> {
             }
         }
     }
-
-    entries
 }
 
 fn build_ui(app: &Application) {
@@ -163,7 +192,11 @@ fn make_factory() -> SignalListItemFactory {
     let factory = SignalListItemFactory::new();
 
     factory.connect_setup(move |_, list_item| {
-        let image = Image::default();
+        let image = Image::builder()
+            .icon_size(IconSize::Large)
+            .use_fallback(true)
+            .build();
+
         let entry = gtk::Box::default();
         let label = Label::default();
 

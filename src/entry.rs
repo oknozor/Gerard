@@ -51,8 +51,8 @@ mod imp {
 
     #[derive(Default)]
     pub struct EntryObject {
-        name: RefCell<String>,
         icon: RefCell<Option<gio::Icon>>,
+        pub name: RefCell<String>,
         pub filename: RefCell<String>,
     }
 
