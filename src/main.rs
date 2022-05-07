@@ -1,9 +1,8 @@
-use closure::closure;
 use cascade::cascade;
 use std::path::PathBuf;
 
 
-use gtk::{CustomFilter, CustomSorter, FilterChange, FilterListModel, gio, Image, SearchBar, SorterChange, SortListModel, Widget};
+use gtk::{CustomFilter, CustomSorter, FilterListModel, gio, Image, SearchBar, SortListModel, Widget};
 
 use gtk::{
     Application, ApplicationWindow, Label, ListView, PolicyType, ScrolledWindow,
@@ -15,30 +14,11 @@ use glib::Object;
 use gtk::glib;
 use gtk::prelude::*;
 use glib::clone;
-use gtk::gdk::AppLaunchContext;
+use crate::entry::EntryObject;
 
-mod imp;
+mod entry;
 
-glib::wrapper! {
-    pub struct EntryObject(ObjectSubclass<imp::EntryObject>);
-}
 
-impl EntryObject {
-    pub fn new(name: &str, icon: &str) -> Self {
-        Object::new(&[("name", &name), ("icon", &icon)]).expect("Failed to create `IntegerObject`.")
-    }
-}
-
-impl From<DesktopAppInfo> for EntryObject {
-    fn from(entry: DesktopAppInfo) -> Self {
-        let name = entry.name();
-        let icon = entry.icon();
-        let filename = entry.filename()
-            .and_then(|p| p.to_str().map(ToString::to_string));
-
-        Object::new(&[("name", &name.as_str()), ("icon", &icon), ("filename", &filename)]).expect("Failed to create `IntegerObject`.")
-    }
-}
 
 fn main() {
     // Create a new application
@@ -47,7 +27,6 @@ fn main() {
         .build();
 
     app.connect_activate(build_ui);
-    app.set_accels_for_action("win.close", &["<Ctrl>W"]);    // Connect to "activate" signal of `app`
 
     // Run the application
     app.run();
@@ -92,7 +71,7 @@ fn build_ui(app: &Application) {
     let list_view = ListView::new(Some(&selection_model), Some(&factory));
 
 
-    list_view.connect_activate(closure!(clone filter, |list_view, position| {
+    list_view.connect_activate(|list_view, position| {
         let model = list_view.model().expect("The model has to exist.");
         let entry = model
             .item(position)
@@ -100,15 +79,8 @@ fn build_ui(app: &Application) {
             .downcast::<EntryObject>()
             .expect("The item has to be an `EntryObject`.");
 
-        let filename = entry.property::<String>("filename");
-
-        DesktopAppInfo::from_filename(&filename)
-            .unwrap()
-            .launch_uris(&[], AppLaunchContext::NONE)
-            .expect("failed to launch application");
-
-        std::process::exit(0);
-    }));
+        entry.launch();
+    });
 
 
     let scrolled_window = ScrolledWindow::builder()
