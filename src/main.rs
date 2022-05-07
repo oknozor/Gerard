@@ -107,8 +107,7 @@ fn build_ui(app: &Application) {
             .launch_uris(&[], AppLaunchContext::NONE)
             .expect("failed to launch application");
 
-        filter.changed(FilterChange::Different);
-        sorter.changed(SorterChange::Different);
+        std::process::exit(0);
     }));
 
 
