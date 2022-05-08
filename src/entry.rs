@@ -37,11 +37,11 @@ impl From<DesktopAppInfo> for EntryObject {
 }
 
 mod imp {
-    use std::cell::{RefCell};
+    use std::cell::{Cell, RefCell};
 
     use glib::{ParamFlags, ParamSpec, Value};
     use gtk::glib;
-    use gtk::glib::ParamSpecString;
+    use gtk::glib::{ParamSpecInt64, ParamSpecString};
     use gtk::prelude::*;
     use gtk::subclass::prelude::*;
     use once_cell::sync::Lazy;
@@ -52,6 +52,7 @@ mod imp {
     #[derive(Default)]
     pub struct EntryObject {
         icon: RefCell<Option<gio::Icon>>,
+        score: Cell<i64>,
         pub name: RefCell<String>,
         pub filename: RefCell<String>,
     }
@@ -68,6 +69,15 @@ mod imp {
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
                 vec![
+                    ParamSpecInt64::new(
+                        "score",
+                        "score",
+                        "score",
+                        i64::MIN,
+                        i64::MAX,
+                        0,
+                        ParamFlags::READWRITE,
+                    ),
                     ParamSpecString::new(
                         "name",
                         "name",
@@ -102,6 +112,10 @@ mod imp {
             pspec: &ParamSpec,
         ) {
             match pspec.name() {
+                "score" => {
+                    let score = value.get().expect("The value needs to be of type `i64`.");
+                    self.score.replace(score);
+                },
                 "name" => {
                     let name = value.get().expect("The value needs to be of type `String`.");
                     self.name.replace(name);
@@ -120,6 +134,7 @@ mod imp {
 
         fn property(&self, _obj: &Self::Type, _id: usize, pspec: &ParamSpec) -> Value {
             match pspec.name() {
+                "score" => self.score.get().to_value(),
                 "name" => self.name.borrow().to_value(),
                 "icon" => self.icon.borrow().to_value(),
                 "filename" => self.filename.borrow().to_value(),

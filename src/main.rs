@@ -1,5 +1,6 @@
 use cascade::cascade;
 use std::path::PathBuf;
+use fuzzy_matcher::FuzzyMatcher;
 
 
 use gtk::{CustomFilter, CustomSorter, FilterListModel, gio, IconSize, Image, SearchBar, SortListModel, Widget};
@@ -15,15 +16,15 @@ use gtk::glib;
 use gtk::prelude::*;
 use glib::clone;
 use crate::entry::EntryObject;
+use crate::gio::ListStore;
+use fuzzy_matcher::skim::SkimMatcherV2;
 
 mod entry;
 
 
 // TODO : Css - https://github.com/gtk-rs/gtk4-rs/blob/master/book/listings/css/1/main.rs
 // TODO : Focus
-// TODO : Icon theme
-// TODO : Remove
-// TODO: Skim - https://github.com/oknozor/onagre/blob/b8afd919aefb7316856a90989dfccc19a2c2e1af/src/entries/external_entry.rs#L37
+// TODO : Remove duplicates
 
 
 fn main() {
@@ -38,34 +39,24 @@ fn main() {
     app.run();
 }
 
-fn get_desktop_entries() -> Vec<EntryObject> {
-    let mut entries = vec![];
-
+fn get_desktop_entries(store: &ListStore) {
     let path = PathBuf::from("/usr/share/applications");
-    destkop_entries_from_path(path, &mut entries);
+    destkop_entries_from_path(path, store);
 
     if let Some(data_dir) = dirs::data_dir() {
-        destkop_entries_from_path(data_dir, &mut entries);
+        destkop_entries_from_path(data_dir, store);
     }
 
     if let Some(data_dir) = dirs::data_local_dir() {
-        destkop_entries_from_path(data_dir, &mut entries);
+        destkop_entries_from_path(data_dir, store);
     }
 
     if let Some(desktop) = dirs::desktop_dir() {
-        destkop_entries_from_path(desktop, &mut entries);
+        destkop_entries_from_path(desktop, store);
     }
-
-    entries.dedup_by(|a, b| {
-        let a = a.property::<String>("name");
-        let b = b.property::<String>("name");
-        a == b
-    });
-
-    entries
 }
 
-fn destkop_entries_from_path(path: PathBuf, entries: &mut Vec<EntryObject>) {
+fn destkop_entries_from_path(path: PathBuf, store: &ListStore) {
     for entry in path.read_dir().expect("Failed to open_dir") {
         let entry = entry.expect("Failed to read desktop entry");
 
@@ -78,21 +69,16 @@ fn destkop_entries_from_path(path: PathBuf, entries: &mut Vec<EntryObject>) {
         if is_desktop_entry {
             let widget = DesktopAppInfo::from_filename(entry.path());
             if let Some(entry) = widget {
-                entries.push(EntryObject::from(entry));
+                store.append(&EntryObject::from(entry));
             }
         }
     }
 }
 
 fn build_ui(app: &Application) {
-    let entries = get_desktop_entries();
-    let model = gio::ListStore::new(EntryObject::static_type());
-    model.splice(0, 0, &entries);
-
+    let model = ListStore::new(EntryObject::static_type());
     let factory = make_factory();
-
-
-    let filter = CustomFilter::new(filter_fn("Intel".into()));
+    let filter = CustomFilter::new(filter_fn("".into()));
     let filter_model = FilterListModel::new(Some(&model), Some(&filter));
     let sorter = make_sorter();
     let sort_model = SortListModel::new(Some(&filter_model), Some(&sorter));
@@ -153,38 +139,42 @@ fn build_ui(app: &Application) {
     window.set_child(Some(&container));
 
     window.present();
+    get_desktop_entries(&model);
+
 }
 
 fn filter_fn(term: String) -> impl Fn(&Object) -> bool {
     move |obj| {
-        // Get `IntegerObject` from `glib::Object`
+        if term.is_empty() {
+            return true;
+        }
+
         let entry = obj
             .downcast_ref::<EntryObject>()
             .expect("The object needs to be of type `EntryObject`.");
 
-        // Get property "number" from `IntegerObject`
         let name = entry.property::<String>("name");
-        name.contains(term.as_str())
+        let matcher = SkimMatcherV2::default().ignore_case();
+        let score = matcher.fuzzy_match(name.as_str(), term.as_str()).unwrap_or(0);
+        entry.set_property("score", score);
+        score.is_positive()
     }
 }
 
 fn make_sorter() -> CustomSorter {
     CustomSorter::new(move |obj1, obj2| {
-        // Get `IntegerObject` from `glib::Object`
         let entry_1 = obj1
             .downcast_ref::<EntryObject>()
-            .expect("The object needs to be of type `IntegerObject`.");
+            .expect("The object needs to be of type `EntryObject`.");
 
         let entry_2 = obj2
             .downcast_ref::<EntryObject>()
-            .expect("The object needs to be of type `IntegerObject`.");
+            .expect("The object needs to be of type `EntryObject`.");
 
-        // Get property "number" from `IntegerObject`
-        let name_1 = entry_1.property::<String>("name");
-        let name_2 = entry_2.property::<String>("name");
+        let score_1 = entry_1.property::<i64>("score");
+        let score_2 = entry_2.property::<i64>("score");
 
-        // Reverse sorting order -> large numbers come first
-        name_2.cmp(&name_1).into()
+        score_2.cmp(&score_1).into()
     })
 }
 
