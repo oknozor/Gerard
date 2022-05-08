@@ -1,31 +1,31 @@
 use cascade::cascade;
-use std::path::PathBuf;
 use fuzzy_matcher::FuzzyMatcher;
 
-
-use gtk::{CustomFilter, CustomSorter, FilterListModel, gio, IconSize, Image, SearchBar, SortListModel, Widget};
+use gtk::{
+    gio, CustomFilter, CustomSorter, FilterListModel, IconSize, Image, SearchBar, SortListModel,
+    Widget,
+};
 
 use gtk::{
     Application, ApplicationWindow, Label, ListView, PolicyType, ScrolledWindow,
     SignalListItemFactory, SingleSelection,
 };
 
-use gtk::gio::{DesktopAppInfo};
-use glib::Object;
-use gtk::glib;
-use gtk::prelude::*;
-use glib::clone;
 use crate::entry::EntryObject;
 use crate::gio::ListStore;
 use fuzzy_matcher::skim::SkimMatcherV2;
+use glib::clone;
+use glib::Object;
+use gtk::gio::DesktopAppInfo;
+use gtk::glib;
+use gtk::prelude::*;
 
 mod entry;
-
+mod lookup;
 
 // TODO : Css - https://github.com/gtk-rs/gtk4-rs/blob/master/book/listings/css/1/main.rs
 // TODO : Focus
 // TODO : Remove duplicates
-
 
 fn main() {
     // Create a new application
@@ -39,42 +39,6 @@ fn main() {
     app.run();
 }
 
-fn get_desktop_entries(store: &ListStore) {
-    let path = PathBuf::from("/usr/share/applications");
-    destkop_entries_from_path(path, store);
-
-    if let Some(data_dir) = dirs::data_dir() {
-        destkop_entries_from_path(data_dir, store);
-    }
-
-    if let Some(data_dir) = dirs::data_local_dir() {
-        destkop_entries_from_path(data_dir, store);
-    }
-
-    if let Some(desktop) = dirs::desktop_dir() {
-        destkop_entries_from_path(desktop, store);
-    }
-}
-
-fn destkop_entries_from_path(path: PathBuf, store: &ListStore) {
-    for entry in path.read_dir().expect("Failed to open_dir") {
-        let entry = entry.expect("Failed to read desktop entry");
-
-        let is_desktop_entry = entry
-            .path()
-            .extension()
-            .map(|ext| ext == "desktop")
-            .unwrap_or(false);
-
-        if is_desktop_entry {
-            let widget = DesktopAppInfo::from_filename(entry.path());
-            if let Some(entry) = widget {
-                store.append(&EntryObject::from(entry));
-            }
-        }
-    }
-}
-
 fn build_ui(app: &Application) {
     let model = ListStore::new(EntryObject::static_type());
     let factory = make_factory();
@@ -84,7 +48,6 @@ fn build_ui(app: &Application) {
     let sort_model = SortListModel::new(Some(&filter_model), Some(&sorter));
     let selection_model = SingleSelection::new(Some(&sort_model));
     let list_view = ListView::new(Some(&selection_model), Some(&factory));
-
 
     list_view.connect_activate(|list_view, position| {
         let model = list_view.model().expect("The model has to exist.");
@@ -96,7 +59,6 @@ fn build_ui(app: &Application) {
 
         entry.launch();
     });
-
 
     let scrolled_window = ScrolledWindow::builder()
         .hscrollbar_policy(PolicyType::Never) // Disable horizontal scrolling
@@ -132,15 +94,13 @@ fn build_ui(app: &Application) {
         ..set_child(Some(&entry));
     };
 
-
     container.append(&search_bar);
     container.append(&scrolled_window);
 
     window.set_child(Some(&container));
 
     window.present();
-    get_desktop_entries(&model);
-
+    lookup::get_desktop_entries(&model);
 }
 
 fn filter_fn(term: String) -> impl Fn(&Object) -> bool {
@@ -155,7 +115,9 @@ fn filter_fn(term: String) -> impl Fn(&Object) -> bool {
 
         let name = entry.property::<String>("name");
         let matcher = SkimMatcherV2::default().ignore_case();
-        let score = matcher.fuzzy_match(name.as_str(), term.as_str()).unwrap_or(0);
+        let score = matcher
+            .fuzzy_match(name.as_str(), term.as_str())
+            .unwrap_or(0);
         entry.set_property("score", score);
         score.is_positive()
     }

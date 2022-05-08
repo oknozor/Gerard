@@ -1,7 +1,10 @@
-use gtk::gdk::AppLaunchContext;
-use gtk::gio::{DesktopAppInfo, glib::{self, Object}};
-use gtk::prelude::AppInfoExt;
 use crate::gio::subclass::prelude::ObjectSubclassExt;
+use gtk::gdk::AppLaunchContext;
+use gtk::gio::{
+    glib::{self, Object},
+    DesktopAppInfo,
+};
+use gtk::prelude::AppInfoExt;
 
 glib::wrapper! {
     pub struct EntryObject(ObjectSubclass<imp::EntryObject>);
@@ -14,11 +17,12 @@ impl EntryObject {
 
     pub fn launch(&self) {
         let entry = imp::EntryObject::from_instance(&self);
-        let filename = &*entry.filename.borrow();
+        let entry = &*entry.desktop_entry.borrow();
 
-        let info = DesktopAppInfo::from_filename(&filename).unwrap();
-
-        info.launch(&[], AppLaunchContext::NONE)
+        entry
+            .as_ref()
+            .expect("desktop entry not found")
+            .launch(&[], AppLaunchContext::NONE)
             .expect("failed to launch application");
 
         std::process::exit(0);
@@ -29,32 +33,35 @@ impl From<DesktopAppInfo> for EntryObject {
     fn from(entry: DesktopAppInfo) -> Self {
         let name = entry.name();
         let icon = entry.icon();
-        let filename = entry.filename()
-            .and_then(|p| p.to_str().map(ToString::to_string));
 
-        Object::new(&[("name", &name.as_str()), ("icon", &icon), ("filename", &filename)]).expect("Failed to create `IntegerObject`.")
+        Object::new(&[
+            ("name", &name.as_str()),
+            ("icon", &icon),
+            ("desktop-entry", &entry),
+        ])
+        .expect("Failed to create `IntegerObject`.")
     }
 }
 
 mod imp {
     use std::cell::{Cell, RefCell};
 
+    use crate::gio;
+    use crate::glib::ParamSpecObject;
     use glib::{ParamFlags, ParamSpec, Value};
+    use gtk::gio::DesktopAppInfo;
     use gtk::glib;
     use gtk::glib::{ParamSpecInt64, ParamSpecString};
     use gtk::prelude::*;
     use gtk::subclass::prelude::*;
     use once_cell::sync::Lazy;
-    use crate::gio;
-    use crate::glib::ParamSpecObject;
-
 
     #[derive(Default)]
     pub struct EntryObject {
         icon: RefCell<Option<gio::Icon>>,
         score: Cell<i64>,
         pub name: RefCell<String>,
-        pub filename: RefCell<String>,
+        pub desktop_entry: RefCell<Option<DesktopAppInfo>>,
     }
 
     #[glib::object_subclass]
@@ -64,7 +71,7 @@ mod imp {
     }
 
     // ANCHOR: object_impl
-// Trait shared by all GObjects
+    // Trait shared by all GObjects
     impl ObjectImpl for EntryObject {
         fn properties() -> &'static [ParamSpec] {
             static PROPERTIES: Lazy<Vec<ParamSpec>> = Lazy::new(|| {
@@ -78,18 +85,12 @@ mod imp {
                         0,
                         ParamFlags::READWRITE,
                     ),
-                    ParamSpecString::new(
-                        "name",
-                        "name",
-                        "name",
-                        None,
-                        ParamFlags::READWRITE,
-                    ),
-                    ParamSpecString::new(
-                        "filename",
-                        "filename",
-                        "filename",
-                        None,
+                    ParamSpecString::new("name", "name", "name", None, ParamFlags::READWRITE),
+                    ParamSpecObject::new(
+                        "desktop-entry",
+                        "desktop-entry",
+                        "desktop-entry",
+                        DesktopAppInfo::static_type(),
                         ParamFlags::READWRITE,
                     ),
                     ParamSpecObject::new(
@@ -104,29 +105,29 @@ mod imp {
             PROPERTIES.as_ref()
         }
 
-        fn set_property(
-            &self,
-            _obj: &Self::Type,
-            _id: usize,
-            value: &Value,
-            pspec: &ParamSpec,
-        ) {
+        fn set_property(&self, _obj: &Self::Type, _id: usize, value: &Value, pspec: &ParamSpec) {
             match pspec.name() {
                 "score" => {
                     let score = value.get().expect("The value needs to be of type `i64`.");
                     self.score.replace(score);
-                },
+                }
                 "name" => {
-                    let name = value.get().expect("The value needs to be of type `String`.");
+                    let name = value
+                        .get()
+                        .expect("The value needs to be of type `String`.");
                     self.name.replace(name);
                 }
                 "icon" => {
-                    let icon = value.get().expect("The value needs to be of type `String`.");
+                    let icon = value
+                        .get()
+                        .expect("The value needs to be of type `String`.");
                     self.icon.replace(icon);
                 }
-                "filename" => {
-                    let filename = value.get().expect("The value needs to be of type `String`.");
-                    self.filename.replace(filename);
+                "desktop-entry" => {
+                    let desktop_entry = value
+                        .get()
+                        .expect("The value needs to be of type `DesktopAppInfo`.");
+                    self.desktop_entry.replace(desktop_entry);
                 }
                 _ => unimplemented!(),
             }
@@ -137,7 +138,7 @@ mod imp {
                 "score" => self.score.get().to_value(),
                 "name" => self.name.borrow().to_value(),
                 "icon" => self.icon.borrow().to_value(),
-                "filename" => self.filename.borrow().to_value(),
+                "desktop-entry" => self.desktop_entry.borrow().to_value(),
                 _ => unimplemented!(),
             }
         }
