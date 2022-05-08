@@ -1,10 +1,7 @@
 use cascade::cascade;
 use fuzzy_matcher::FuzzyMatcher;
 
-use gtk::{
-    gio, CustomFilter, CustomSorter, FilterListModel, IconSize, Image, SearchBar, SortListModel,
-    Widget,
-};
+use gtk::{gio, CustomFilter, CustomSorter, FilterListModel, IconSize, Image, SearchBar, SortListModel, Widget, CssProvider, StyleContext};
 
 use gtk::{
     Application, ApplicationWindow, Label, ListView, PolicyType, ScrolledWindow,
@@ -16,6 +13,7 @@ use crate::gio::ListStore;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use glib::clone;
 use glib::Object;
+use gtk::gdk::Display;
 use gtk::gio::DesktopAppInfo;
 use gtk::glib;
 use gtk::prelude::*;
@@ -23,7 +21,7 @@ use gtk::prelude::*;
 mod entry;
 mod lookup;
 
-// TODO : Css - https://github.com/gtk-rs/gtk4-rs/blob/master/book/listings/css/1/main.rs
+// TODO : Css class - https://github.com/gtk-rs/gtk4-rs/blob/master/book/listings/css/1/main.rs
 // TODO : Focus
 // TODO : Remove duplicates
 
@@ -33,6 +31,7 @@ fn main() {
         .application_id("org.gtk-rs.example")
         .build();
 
+    app.connect_startup(|_| load_css());
     app.connect_activate(build_ui);
 
     // Run the application
@@ -56,7 +55,6 @@ fn build_ui(app: &Application) {
             .expect("The item has to exist.")
             .downcast::<EntryObject>()
             .expect("The item has to be an `EntryObject`.");
-
         entry.launch();
     });
 
@@ -169,4 +167,30 @@ fn make_factory() -> SignalListItemFactory {
     });
 
     factory
+}
+
+// Load a user defined stylesheet from '.config/gerard/style.css`
+fn load_css() {
+    let gerard_config_stylesheet = dirs::config_dir()
+        .expect("Failed to open $XDG_CONFIG_DIR")
+        .join("gerard/style.css");
+
+    // Return early if there is not user defined stylesheetj
+    if !gerard_config_stylesheet.exists() {
+        return;
+    }
+
+    // Load the stylesheet as a `gio::File`
+    let stylesheet = gio::File::for_path(gerard_config_stylesheet);
+
+    // Load the CSS file and add it to the provider
+    let provider = CssProvider::new();
+    provider.load_from_file(&stylesheet);
+
+    // Add the provider to the default screen
+    StyleContext::add_provider_for_display(
+        &Display::default().expect("Could not connect to a display."),
+        &provider,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
 }
