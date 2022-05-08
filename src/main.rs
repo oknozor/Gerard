@@ -1,7 +1,10 @@
 use cascade::cascade;
 use fuzzy_matcher::FuzzyMatcher;
 
-use gtk::{gio, CustomFilter, CustomSorter, FilterListModel, IconSize, Image, SearchBar, SortListModel, Widget, CssProvider, StyleContext};
+use gtk::{
+    gio, CssProvider, CustomFilter, CustomSorter, FilterListModel, IconSize, Image, SearchBar,
+    SortListModel, StyleContext, Widget,
+};
 
 use gtk::{
     Application, ApplicationWindow, Label, ListView, PolicyType, ScrolledWindow,
@@ -25,13 +28,10 @@ mod lookup;
 // TODO : Add custom css class
 // TODO : ListView should always capture keyboard
 
-
-static MATCHER: Lazy<SkimMatcherV2> = Lazy::new(|| { SkimMatcherV2::default().ignore_case() });
+static MATCHER: Lazy<SkimMatcherV2> = Lazy::new(|| SkimMatcherV2::default().ignore_case());
 
 fn main() {
-    let app = Application::builder()
-        .application_id("gerard")
-        .build();
+    let app = Application::builder().application_id("gerard").build();
     app.connect_startup(|_| load_css());
     app.connect_activate(build_ui);
     app.run();
@@ -100,8 +100,10 @@ fn build_ui(app: &Application) {
     lookup::get_desktop_entries(&model);
 }
 
+// Replace the current filter function with the current search terms
 fn filter_fn(term: String) -> impl Fn(&Object) -> bool {
     move |obj| {
+        // If the search term is "" let's just display all entries
         if term.is_empty() {
             return true;
         }
@@ -111,14 +113,20 @@ fn filter_fn(term: String) -> impl Fn(&Object) -> bool {
             .expect("The object needs to be of type `EntryObject`.");
 
         let name = entry.property::<String>("name");
+
+        // Apply fuzzy matching to the current search entry
         let score = MATCHER
             .fuzzy_match(name.as_str(), term.as_str())
             .unwrap_or(0);
+        // Replace the entry score with the current score
         entry.set_property("score", score);
+
+        // Finally display entries with a non negative match score
         score.is_positive()
     }
 }
 
+// Create a sorter to display EntryObject sorted by search score.
 fn make_sorter() -> CustomSorter {
     CustomSorter::new(move |obj1, obj2| {
         let entry_1 = obj1
@@ -136,18 +144,26 @@ fn make_sorter() -> CustomSorter {
     })
 }
 
+// Create an item factory to transform our EntryObject into gtk widgets
 fn make_factory() -> SignalListItemFactory {
     let factory = SignalListItemFactory::new();
 
     factory.connect_setup(move |_, list_item| {
+        // Create a default image to hold the desktop entry icon
         let image = Image::builder()
             .icon_size(IconSize::Large)
             .use_fallback(true)
             .build();
 
-        let entry = gtk::Box::default();
+        // An empty label to hold the desktop entry name
         let label = Label::default();
 
+        // A box holding a desktop entry row
+        let entry = gtk::Box::default();
+        entry.append(&image);
+        entry.append(&label);
+
+        // Bind the 'name' and 'icon' props to update the row accordingly
         list_item
             .property_expression("item")
             .chain_property::<EntryObject>("icon")
@@ -158,9 +174,7 @@ fn make_factory() -> SignalListItemFactory {
             .chain_property::<EntryObject>("name")
             .bind(&label, "label", Widget::NONE);
 
-        entry.append(&image);
-        entry.append(&label);
-
+        // Finally append the entry to the List
         list_item.set_child(Some(&entry));
     });
 
