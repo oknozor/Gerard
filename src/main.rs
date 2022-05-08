@@ -17,24 +17,23 @@ use gtk::gdk::Display;
 use gtk::gio::DesktopAppInfo;
 use gtk::glib;
 use gtk::prelude::*;
+use once_cell::sync::Lazy;
 
 mod entry;
 mod lookup;
 
-// TODO : Css class - https://github.com/gtk-rs/gtk4-rs/blob/master/book/listings/css/1/main.rs
-// TODO : Focus
-// TODO : Remove duplicates
+// TODO : Add custom css class
+// TODO : ListView should always capture keyboard
+
+
+static MATCHER: Lazy<SkimMatcherV2> = Lazy::new(|| { SkimMatcherV2::default().ignore_case() });
 
 fn main() {
-    // Create a new application
     let app = Application::builder()
-        .application_id("org.gtk-rs.example")
+        .application_id("gerard")
         .build();
-
     app.connect_startup(|_| load_css());
     app.connect_activate(build_ui);
-
-    // Run the application
     app.run();
 }
 
@@ -112,8 +111,7 @@ fn filter_fn(term: String) -> impl Fn(&Object) -> bool {
             .expect("The object needs to be of type `EntryObject`.");
 
         let name = entry.property::<String>("name");
-        let matcher = SkimMatcherV2::default().ignore_case();
-        let score = matcher
+        let score = MATCHER
             .fuzzy_match(name.as_str(), term.as_str())
             .unwrap_or(0);
         entry.set_property("score", score);
